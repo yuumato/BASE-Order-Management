@@ -1,0 +1,39 @@
+{
+  "name": "BASE 注文管理",
+  "short_name": "BASE注文",
+  "description": "BASEの注文をスマホで管理するPWAアプリ",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#e63b2e",
+  "lang": "ja",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "注文一覧",
+      "url": "./#orders",
+      "description": "注文一覧を開く"
+    }
+  ]
+}

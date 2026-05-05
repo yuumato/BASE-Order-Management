@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="96" fill="#e63b2e"/>
+  <!-- Package icon -->
+  <g fill="none" stroke="white" stroke-width="22" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="256,88 420,176 420,344 256,432 92,344 92,176" fill="rgba(255,255,255,0.12)"/>
+    <polyline points="92,176 256,264 420,176"/>
+    <line x1="256" y1="264" x2="256" y2="432"/>
+    <line x1="174" y1="132" x2="174" y2="300"/>
+    <line x1="338" y1="132" x2="338" y2="300"/>
+  </g>
+  <!-- Letter B -->
+  <text x="256" y="272" font-family="Arial Black, Helvetica Neue, sans-serif"
+        font-size="180" font-weight="900" fill="white"
+        text-anchor="middle" dominant-baseline="middle">B</text>
+</svg>
