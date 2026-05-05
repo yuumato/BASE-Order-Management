@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#e63b2e">
+  <meta name="description" content="BASEの注文をスマホで管理するPWAアプリ">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BASE注文">
+  <title>BASE 注文管理</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Auth View ─────────────────────────────────────── -->
+  <div id="view-auth" class="view active">
+    <!-- content rendered by JS -->
+  </div>
+
+  <!-- ── Setup View ────────────────────────────────────── -->
+  <div id="view-setup" class="view">
+    <!-- content rendered by JS -->
+  </div>
+
+  <!-- ── Orders View ───────────────────────────────────── -->
+  <div id="view-orders" class="view">
+    <header class="app-header">
+      <h1>注文一覧</h1>
+      <button id="btn-refresh" class="icon-btn" title="再読み込み">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
+      <button id="btn-search-toggle" class="icon-btn" title="検索">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </header>
+    <div id="search-bar" class="search-bar hidden">
+      <input type="search" id="search-input"
+             placeholder="注文番号・お名前・商品名で検索..."
+             autocomplete="off" autocorrect="off">
+    </div>
+    <div class="filter-tabs">
+      <button class="tab active" data-filter="all" data-label="すべて">すべて</button>
+      <button class="tab" data-filter="pending" data-label="未発送">未発送</button>
+      <button class="tab" data-filter="processing" data-label="対応中">対応中</button>
+      <button class="tab" data-filter="shipped" data-label="発送済">発送済</button>
+      <button class="tab" data-filter="cancelled" data-label="キャンセル">キャンセル</button>
+    </div>
+    <div id="orders-list" class="orders-list">
+      <div class="state-box">
+        <div class="spinner"></div>
+        <p>読み込み中...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Order Detail View ─────────────────────────────── -->
+  <div id="view-detail" class="view">
+    <header class="app-header">
+      <button id="btn-back" class="icon-btn" title="戻る">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <h1>注文詳細</h1>
+    </header>
+    <div class="detail-scroll">
+      <!-- rendered by JS -->
+    </div>
+  </div>
+
+  <!-- ── Settings View ─────────────────────────────────── -->
+  <div id="view-settings" class="view">
+    <header class="app-header">
+      <h1>設定</h1>
+    </header>
+    <div class="settings-scroll">
+      <!-- rendered by JS -->
+    </div>
+  </div>
+
+  <!-- ── Bottom Navigation ─────────────────────────────── -->
+  <nav class="bottom-nav hidden" id="bottom-nav">
+    <button class="nav-item" data-view="orders">
+      <span class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+          <line x1="12" y1="22.08" x2="12" y2="12"/>
+        </svg>
+      </span>
+      <span class="nav-label">注文</span>
+    </button>
+    <button class="nav-item" data-view="settings">
+      <span class="nav-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </span>
+      <span class="nav-label">設定</span>
+    </button>
+  </nav>
+
+</div><!-- #app -->
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Google APIs (loaded async) -->
+<script src="https://apis.google.com/js/api.js" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/app.js" defer></script>
+</body>
+</html>
