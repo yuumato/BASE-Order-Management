@@ -218,7 +218,9 @@ async function loadOrders(forceRefresh = false) {
   state.isLoading = true; renderOrdersList();
   try {
     const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-    state.sheetName = meta.result.sheets[0]?.properties?.title || 'Sheet1';
+    // データは2枚目のシート（02...）にある
+    const sheets = meta.result.sheets;
+    state.sheetName = sheets[1]?.properties?.title || sheets[0]?.properties?.title || 'Sheet1';
 
     // 1行目から全読み込み（ヘッダー2行＋データ）
     const resp = await gapi.client.sheets.spreadsheets.values.get({
