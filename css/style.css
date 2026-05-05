@@ -256,6 +256,10 @@ body {
 .product-title { font-size: 13px; line-height: 1.5; }
 .mono { font-family: monospace; font-size: 13px; }
 .link { color: var(--primary); text-decoration: none; }
+.link-btn {
+  display: inline-block; color: var(--primary);
+  font-weight: 600; text-decoration: none; font-size: 14px;
+}
 .hint { color: var(--text-hint); }
 
 /* ===== Settings ===== */
