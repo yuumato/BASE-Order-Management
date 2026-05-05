@@ -1,108 +1,112 @@
 /* =========================================================
-   BASE 注文管理 PWA  – app.js
+   BASE 注文管理 PWA  – app.js  (v2: 実際のシート構造対応)
+   ヘッダー2行、データ3行目から
    ========================================================= */
 
-// ── Config ────────────────────────────────────────────────
+// ── スプレッドシート列インデックス（0始まり）────────────
+const C = {
+  order_date:       0,   // A: 注文日
+  seq_no:           1,   // B: No.
+  warehouse_no:     2,   // C: 倉庫No.
+  status:           4,   // E: ステータス
+  base_order_id:    5,   // F: BASE注文番号
+  shop_id:          7,   // H: ショップID
+  shop_name:        8,   // I: ショップ名
+  mail_orei:        9,   // J: メール送信(御礼)
+  mail_shiire:     10,   // K: メール送信(仕入れ)
+  mail_delivery:   11,   // L: メール送信(出荷通知)
+  mail_review:     12,   // M: メール送信(評価依頼)
+  recipient_name:  13,   // N: 送付先名
+  zip:             14,   // O: 〒
+  address_street:  15,   // P: 住所2
+  phone:           16,   // Q: 電話番号
+  addressee:       17,   // R: 宛名
+  zip1:            18,   // S: 〒前半
+  zip2:            19,   // T: 〒後半
+  prefecture:      20,   // U: 都道府県
+  city:            21,   // V: 市区町村
+  address_detail:  22,   // W: 住所
+  phone2:          23,   // X: 電話番号
+  email:           24,   // Y: メールアドレス
+  image_url:       25,   // Z: 画像リンク
+  product_page:    26,   // AA: 商品ページ
+  product_title:   27,   // AB: タイトル
+  variation:       28,   // AC: バリエーション内容
+  asin_parent:     29,   // AD: ASIN(親)
+  asin_child:      30,   // AE: ASIN(子)
+  link_parent:     31,   // AF: リンク(親)
+  link_child:      32,   // AG: リンク(子)
+  purchase_order:  33,   // AH: 仕入注文番号
+  amazon_page:     34,   // AI: Ama注文ページ
+  arrival_date1:   35,   // AJ: 到着予定日
+  arrival_date2:   36,   // AK: 到着予定日
+  arrival_date:    37,   // AL: 到着日
+  unit_price:      41,   // AP: 単価
+  subtotal:        42,   // AQ: 小計
+  option_fee:      43,   // AR: オプション
+  total_amount:    44,   // AS: 合計
+  commission:      45,   // AT: 手数料
+  quantity:        48,   // AW: 数量
+  purchase_price:  49,   // AX: 仕入金額
+  base_link:       50,   // AY: BASE
+  amazon_link:     51,   // AZ: AmazonJP
+  domestic_ship:   52,   // BA: 国内送料
+  tracking_number: 53,   // BB: 追跡番号
+  cost:            54,   // BC: コスト
+  profit:          55,   // BD: 利益
+  profit_rate:     56,   // BE: 利益率
+};
+
+const DATA_START_ROW = 3; // ヘッダー2行 → データは3行目から
+
+// ── ステータス定義 ─────────────────────────────────────
+const STATUS_DEF = {
+  '完了':         { css: 'completed',  label: '完了' },
+  '評価依頼待ち': { css: 'review',     label: '評価依頼待ち' },
+  '仕入済':       { css: 'sourced',    label: '仕入済' },
+  '仕入れ済':     { css: 'sourced',    label: '仕入済' },
+  'キャンセル':   { css: 'cancelled',  label: 'キャンセル' },
+};
+
+const STATUS_OPTIONS = ['仕入済', '評価依頼待ち', '完了', 'キャンセル'];
+
+const STORAGE_KEY = 'base_order_pwa';
 const SPREADSHEET_ID = '1otZ-q-pp0i6biDdlRe6iVimWCQ8rEQBFMpch6Dv3axE';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
-const STORAGE_KEY = 'base_order_pwa';
 
-// BASE 標準エクスポート列マッピング候補
-const COLUMN_ALIASES = {
-  order_id:       ['注文番号', '注文ID', 'OrderID', 'Order ID'],
-  order_date:     ['注文日時', '注文日', 'OrderDate', 'Order Date'],
-  payment_method: ['支払い方法', '決済方法', 'PaymentMethod'],
-  payment_status: ['支払い状況', '入金状況', '支払状況', 'PaymentStatus'],
-  shipping_status:['発送状況', '配送状況', '出荷状況', 'ShippingStatus'],
-  last_name:      ['注文者名（姓）', '注文者姓', '氏名（姓）', 'LastName'],
-  first_name:     ['注文者名（名）', '注文者名', '氏名（名）', 'FirstName'],
-  customer_name:  ['注文者名', 'お名前', 'CustomerName'],
-  email:          ['注文者メールアドレス', 'メールアドレス', 'Email'],
-  phone:          ['注文者電話番号', '電話番号', 'Phone'],
-  zip:            ['お届け先郵便番号', '郵便番号', 'Zip'],
-  prefecture:     ['お届け先都道府県', '都道府県', 'Prefecture'],
-  city:           ['お届け先市区町村', '市区町村', 'City'],
-  address1:       ['お届け先番地', '番地', 'Address1'],
-  address2:       ['お届け先建物名', '建物名', 'Address2'],
-  product_name:   ['商品名', '商品', 'ProductName'],
-  product_id:     ['商品番号', '商品ID', 'ProductID'],
-  quantity:       ['商品個数', '数量', '個数', 'Quantity'],
-  unit_price:     ['商品単価', '単価', '商品金額', 'UnitPrice'],
-  discount:       ['割引金額', '割引', 'Discount'],
-  shipping_fee:   ['送料', 'ShippingFee'],
-  total_amount:   ['合計金額', '合計', 'Total', 'TotalAmount'],
-  tracking_number:['追跡番号', 'トラッキング番号', 'TrackingNumber'],
-  memo:           ['メモ', '備考', 'Note', 'Notes'],
-};
-
-const STATUS_LABELS = {
-  pending:    '未発送',
-  processing: '対応中',
-  shipped:    '発送済',
-  cancelled:  'キャンセル',
-};
-
-const SHIPPING_STATUS_MAP = {
-  '未発送': 'pending',
-  '発送待ち': 'pending',
-  '未対応': 'pending',
-  '対応中': 'processing',
-  '準備中': 'processing',
-  '発送済み': 'shipped',
-  '発送済': 'shipped',
-  '配送済み': 'shipped',
-  'キャンセル': 'cancelled',
-  'キャンセル済み': 'cancelled',
-};
-
-// ── State ─────────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────
 const state = {
   view: 'auth',
   orders: [],
-  filteredOrders: [],
-  selectedOrderId: null,
+  filtered: [],
+  selectedOrder: null,
   filter: 'all',
   searchQuery: '',
   isLoading: false,
   isSignedIn: false,
-  userInfo: null,
-  headers: [],
-  columnMap: {},
   sheetName: 'Sheet1',
   lastSynced: null,
   clientId: '',
   tokenClient: null,
-  accessToken: null,
   showSearch: false,
 };
 
-// ── LocalStorage helpers ───────────────────────────────────
+// ── Storage ────────────────────────────────────────────
 function loadStorage() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
 }
-
 function saveStorage(data) {
-  const current = loadStorage();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...data }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadStorage(), ...data }));
+}
+function loadCached() {
+  try { return JSON.parse(sessionStorage.getItem('base_orders') || 'null'); } catch { return null; }
+}
+function saveCache(orders) {
+  try { sessionStorage.setItem('base_orders', JSON.stringify(orders)); } catch {}
 }
 
-function loadCachedOrders() {
-  try {
-    return JSON.parse(sessionStorage.getItem('base_orders') || 'null');
-  } catch { return null; }
-}
-
-function saveCachedOrders(orders) {
-  try {
-    sessionStorage.setItem('base_orders', JSON.stringify(orders));
-  } catch {}
-}
-
-// ── Google API ─────────────────────────────────────────────
-let gapiReady = false;
-let gisReady = false;
+// ── Google API ─────────────────────────────────────────
+let gapiReady = false, gisReady = false;
 
 function onGapiLoaded() {
   gapi.load('client', async () => {
@@ -123,7 +127,6 @@ function tryAutoSignIn() {
   if (!gapiReady || !gisReady) return;
   const { clientId, accessToken } = loadStorage();
   state.clientId = clientId || '';
-
   if (clientId && accessToken) {
     gapi.client.setToken({ access_token: accessToken });
     initTokenClient(clientId);
@@ -141,27 +144,19 @@ function initTokenClient(clientId) {
   state.tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: SCOPES,
-    callback: onTokenResponse,
+    callback: (resp) => {
+      if (resp.error) { showToast('認証エラー: ' + resp.error); return; }
+      state.accessToken = resp.access_token;
+      saveStorage({ accessToken: resp.access_token });
+      gapi.client.setToken({ access_token: resp.access_token });
+      afterSignIn();
+    },
   });
-}
-
-function onTokenResponse(resp) {
-  if (resp.error) {
-    showToast('認証エラー: ' + resp.error);
-    return;
-  }
-  state.accessToken = resp.access_token;
-  saveStorage({ accessToken: resp.access_token });
-  gapi.client.setToken({ access_token: resp.access_token });
-  afterSignIn();
 }
 
 async function verifyToken() {
   try {
-    await gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'A1',
-    });
+    await gapi.client.sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
     afterSignIn();
   } catch {
     gapi.client.setToken(null);
@@ -171,20 +166,13 @@ async function verifyToken() {
 }
 
 function signIn() {
-  const clientId = document.getElementById('input-client-id-auth')?.value.trim()
-    || document.getElementById('input-client-id-settings')?.value.trim()
-    || state.clientId;
-
-  if (!clientId) {
-    showToast('クライアントIDを入力してください');
-    navigate('setup');
-    return;
-  }
-  state.clientId = clientId;
-  saveStorage({ clientId });
-  initTokenClient(clientId);
-
-  if (!state.tokenClient) { showToast('初期化中... もう一度お試しください'); return; }
+  const inputEl = document.getElementById('input-client-id-auth') || document.getElementById('input-client-id-settings');
+  const cid = (inputEl?.value.trim()) || state.clientId;
+  if (!cid) { showToast('クライアントIDを入力してください'); navigate('setup'); return; }
+  state.clientId = cid;
+  saveStorage({ clientId: cid });
+  initTokenClient(cid);
+  if (!state.tokenClient) { showToast('初期化中... 再度お試しください'); return; }
   state.tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
@@ -192,10 +180,8 @@ function signOut() {
   const token = gapi.client.getToken();
   if (token) google.accounts.oauth2.revoke(token.access_token);
   gapi.client.setToken(null);
-  state.accessToken = null;
   state.isSignedIn = false;
   state.orders = [];
-  state.userInfo = null;
   saveStorage({ accessToken: null });
   navigate('auth');
 }
@@ -206,12 +192,12 @@ async function afterSignIn() {
   await loadOrders();
 }
 
-// ── Sheets API ─────────────────────────────────────────────
+// ── データ読み込み ─────────────────────────────────────
 async function loadOrders(forceRefresh = false) {
   if (state.isLoading) return;
 
   if (!forceRefresh) {
-    const cached = loadCachedOrders();
+    const cached = loadCached();
     if (cached) {
       state.orders = cached;
       applyFilter();
@@ -224,49 +210,34 @@ async function loadOrders(forceRefresh = false) {
   renderOrdersList();
 
   try {
-    // First, get spreadsheet metadata to find actual sheet names
-    const meta = await gapi.client.sheets.spreadsheets.get({
-      spreadsheetId: SPREADSHEET_ID,
-    });
-    const sheets = meta.result.sheets;
-    state.sheetName = sheets[0]?.properties?.title || 'Sheet1';
+    // シート名を取得
+    const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    state.sheetName = meta.result.sheets[0]?.properties?.title || 'Sheet1';
 
-    // Read all data
+    // データ部分のみ読み込み（3行目から）
     const resp = await gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${state.sheetName}!A:Z`,
+      range: `${state.sheetName}!A${DATA_START_ROW}:BG`,
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
 
     const rows = resp.result.values || [];
-    if (rows.length < 2) {
-      state.orders = [];
-      state.isLoading = false;
-      applyFilter();
-      renderOrdersList();
-      return;
-    }
+    state.orders = rows
+      .map((row, i) => parseRow(row, i + DATA_START_ROW))
+      .filter(o => o.base_order_id || o.seq_no); // 空行除外
 
-    state.headers = rows[0].map(String);
-    state.columnMap = buildColumnMap(state.headers);
-
-    const dataRows = rows.slice(1);
-    const rawOrders = dataRows.map((row, i) => rowToOrder(row, i + 2)); // row index 1-based +1 for header
-
-    // Group by order_id (multiple rows per order for multiple products)
-    state.orders = groupOrders(rawOrders);
     state.lastSynced = new Date();
-    saveCachedOrders(state.orders);
+    saveCache(state.orders);
 
   } catch (err) {
-    console.error('loadOrders error:', err);
+    console.error(err);
     if (err.status === 401 || err.status === 403) {
-      showToast('認証が切れました。再ログインしてください');
+      showToast('認証が切れました。再サインインしてください');
       gapi.client.setToken(null);
       saveStorage({ accessToken: null });
       navigate('auth');
     } else {
-      showToast('データ取得に失敗しました');
+      showToast('読み込みに失敗しました');
     }
   }
 
@@ -275,673 +246,508 @@ async function loadOrders(forceRefresh = false) {
   renderOrdersList();
 }
 
-function buildColumnMap(headers) {
-  const map = {};
-  headers.forEach((h, i) => {
-    const header = String(h).trim();
-    for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
-      if (!map[field] && aliases.some(a => header.includes(a) || a.includes(header))) {
-        map[field] = i;
-      }
-    }
-  });
-  return map;
+function get(row, idx) {
+  return (idx < row.length && row[idx] !== undefined && row[idx] !== null)
+    ? String(row[idx]).trim() : '';
 }
 
-function col(row, field) {
-  const idx = state.columnMap[field];
-  if (idx === undefined) return '';
-  return row[idx] !== undefined ? String(row[idx]) : '';
-}
-
-function rowToOrder(row, rowIndex) {
-  const shippingStatusRaw = col(row, 'shipping_status');
-  const statusKey = SHIPPING_STATUS_MAP[shippingStatusRaw] || classifyStatus(shippingStatusRaw);
-
-  const lastName = col(row, 'last_name');
-  const firstName = col(row, 'first_name');
-  const customerName = col(row, 'customer_name') || (lastName + firstName) || '(名前なし)';
+function parseRow(row, spreadsheetRowIndex) {
+  const title = get(row, C.product_title);
+  const shortTitle = title.length > 50 ? title.slice(0, 50) + '…' : title;
 
   return {
-    rowIndex,
-    order_id: col(row, 'order_id') || `ROW${rowIndex}`,
-    order_date: formatDate(col(row, 'order_date')),
-    payment_method: col(row, 'payment_method'),
-    payment_status: col(row, 'payment_status'),
-    shipping_status_raw: shippingStatusRaw,
-    status: statusKey,
-    customer_name: customerName,
-    email: col(row, 'email'),
-    phone: col(row, 'phone'),
-    zip: col(row, 'zip'),
-    prefecture: col(row, 'prefecture'),
-    city: col(row, 'city'),
-    address1: col(row, 'address1'),
-    address2: col(row, 'address2'),
-    products: [{
-      name: col(row, 'product_name'),
-      id: col(row, 'product_id'),
-      quantity: col(row, 'quantity'),
-      unit_price: col(row, 'unit_price'),
-    }].filter(p => p.name),
-    discount: col(row, 'discount'),
-    shipping_fee: col(row, 'shipping_fee'),
-    total_amount: col(row, 'total_amount'),
-    tracking_number: col(row, 'tracking_number'),
-    memo: col(row, 'memo'),
+    _row: spreadsheetRowIndex, // スプレッドシート上の行番号（更新用）
+    order_date:      get(row, C.order_date),
+    seq_no:          get(row, C.seq_no),
+    status_raw:      get(row, C.status),
+    base_order_id:   get(row, C.base_order_id),
+    shop_id:         get(row, C.shop_id),
+    shop_name:       get(row, C.shop_name),
+    mail_orei:       get(row, C.mail_orei),
+    mail_shiire:     get(row, C.mail_shiire),
+    mail_delivery:   get(row, C.mail_delivery),
+    mail_review:     get(row, C.mail_review),
+    recipient_name:  get(row, C.recipient_name),
+    zip:             get(row, C.zip),
+    address_street:  get(row, C.address_street),
+    phone:           get(row, C.phone),
+    prefecture:      get(row, C.prefecture),
+    city:            get(row, C.city),
+    address_detail:  get(row, C.address_detail),
+    email:           get(row, C.email),
+    image_url:       get(row, C.image_url),
+    product_page:    get(row, C.product_page),
+    product_title:   title,
+    product_title_short: shortTitle,
+    variation:       get(row, C.variation),
+    asin_parent:     get(row, C.asin_parent),
+    asin_child:      get(row, C.asin_child),
+    link_parent:     get(row, C.link_parent),
+    link_child:      get(row, C.link_child),
+    purchase_order:  get(row, C.purchase_order),
+    amazon_page:     get(row, C.amazon_page),
+    arrival_date1:   get(row, C.arrival_date1),
+    arrival_date2:   get(row, C.arrival_date2),
+    arrival_date:    get(row, C.arrival_date),
+    unit_price:      get(row, C.unit_price),
+    total_amount:    get(row, C.total_amount),
+    commission:      get(row, C.commission),
+    quantity:        get(row, C.quantity),
+    purchase_price:  get(row, C.purchase_price),
+    base_link:       get(row, C.base_link),
+    amazon_link:     get(row, C.amazon_link),
+    tracking_number: get(row, C.tracking_number),
+    cost:            get(row, C.cost),
+    profit:          get(row, C.profit),
+    profit_rate:     get(row, C.profit_rate),
   };
 }
 
-function groupOrders(rawOrders) {
-  const map = new Map();
-  for (const o of rawOrders) {
-    if (map.has(o.order_id)) {
-      const existing = map.get(o.order_id);
-      existing.products.push(...o.products);
-      existing._rows.push(o.rowIndex);
-    } else {
-      o._rows = [o.rowIndex];
-      map.set(o.order_id, o);
-    }
+// ── フィルター ─────────────────────────────────────────
+function applyFilter() {
+  let list = state.orders;
+  if (state.filter !== 'all') {
+    list = list.filter(o => o.status_raw === state.filter);
   }
-  return Array.from(map.values());
+  if (state.searchQuery) {
+    const q = state.searchQuery.toLowerCase();
+    list = list.filter(o =>
+      o.seq_no.includes(q) ||
+      o.base_order_id.toLowerCase().includes(q) ||
+      o.recipient_name.toLowerCase().includes(q) ||
+      o.shop_name.toLowerCase().includes(q) ||
+      o.product_title.toLowerCase().includes(q)
+    );
+  }
+  state.filtered = list;
 }
 
-function classifyStatus(raw) {
-  const r = (raw || '').trim();
-  if (!r || r === '未発送' || r === '発送待ち') return 'pending';
-  if (r.includes('発送') || r.includes('配送')) return 'shipped';
-  if (r.includes('キャンセル')) return 'cancelled';
-  return 'processing';
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return String(dateStr);
-  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-}
-
-function formatAmount(val) {
-  if (!val) return '';
-  const n = parseFloat(String(val).replace(/[^\d.]/g, ''));
-  if (isNaN(n)) return val;
-  return '¥' + n.toLocaleString('ja-JP');
-}
-
-async function updateShippingStatus(order, newStatusLabel, trackingNumber) {
-  const col_idx = state.columnMap['shipping_status'];
-  const tracking_idx = state.columnMap['tracking_number'];
-  if (col_idx === undefined) { showToast('発送状況の列が見つかりません'); return; }
-
+// ── スプレッドシート更新 ───────────────────────────────
+async function updateOrder(order, newStatus, trackingNumber) {
   state.isLoading = true;
-  showToast('更新中...');
+  showToast('更新中...', 60000);
 
   try {
     const updates = [];
-    for (const rowIndex of order._rows) {
-      const colLetter = indexToColumnLetter(col_idx);
-      updates.push({
-        range: `${state.sheetName}!${colLetter}${rowIndex}`,
-        values: [[newStatusLabel]],
-      });
-      if (tracking_idx !== undefined && trackingNumber !== undefined) {
-        const tCol = indexToColumnLetter(tracking_idx);
-        updates.push({
-          range: `${state.sheetName}!${tCol}${rowIndex}`,
-          values: [[trackingNumber]],
-        });
-      }
+    const colStatus   = indexToCol(C.status);
+    const colTracking = indexToCol(C.tracking_number);
+    const row = order._row;
+
+    updates.push({ range: `${state.sheetName}!${colStatus}${row}`,   values: [[newStatus]] });
+    if (trackingNumber !== undefined) {
+      updates.push({ range: `${state.sheetName}!${colTracking}${row}`, values: [[trackingNumber]] });
     }
 
     await gapi.client.sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      resource: {
-        valueInputOption: 'RAW',
-        data: updates,
-      },
+      resource: { valueInputOption: 'RAW', data: updates },
     });
 
-    // Update in local state
-    order.shipping_status_raw = newStatusLabel;
-    order.status = SHIPPING_STATUS_MAP[newStatusLabel] || classifyStatus(newStatusLabel);
+    order.status_raw = newStatus;
     if (trackingNumber !== undefined) order.tracking_number = trackingNumber;
-    saveCachedOrders(state.orders);
+    saveCache(state.orders);
     applyFilter();
-
-    showToast('更新しました');
+    showToast('更新しました ✓');
     renderDetail(order);
   } catch (err) {
-    console.error('updateShippingStatus error:', err);
+    console.error(err);
     showToast('更新に失敗しました');
   }
   state.isLoading = false;
 }
 
-function indexToColumnLetter(idx) {
-  let col = '';
-  let n = idx + 1;
-  while (n > 0) {
-    col = String.fromCharCode(((n - 1) % 26) + 65) + col;
-    n = Math.floor((n - 1) / 26);
-  }
+function indexToCol(idx) {
+  let col = '', n = idx + 1;
+  while (n > 0) { col = String.fromCharCode(((n - 1) % 26) + 65) + col; n = Math.floor((n - 1) / 26); }
   return col;
 }
 
-// ── Filtering ──────────────────────────────────────────────
-function applyFilter() {
-  let list = state.orders;
-
-  if (state.filter !== 'all') {
-    list = list.filter(o => o.status === state.filter);
-  }
-
-  if (state.searchQuery) {
-    const q = state.searchQuery.toLowerCase();
-    list = list.filter(o =>
-      o.order_id.toLowerCase().includes(q) ||
-      o.customer_name.toLowerCase().includes(q) ||
-      o.email.toLowerCase().includes(q) ||
-      o.products.some(p => p.name.toLowerCase().includes(q))
-    );
-  }
-
-  state.filteredOrders = list;
-}
-
-// ── Navigation ─────────────────────────────────────────────
+// ── ナビゲーション ─────────────────────────────────────
 function navigate(view, data = {}) {
-  // Hide all views
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(`view-${view}`)?.classList.add('active');
 
-  const viewEl = document.getElementById(`view-${view}`);
-  if (viewEl) viewEl.classList.add('active');
-
-  // Bottom nav visibility
-  const bottomNav = document.getElementById('bottom-nav');
   const showNav = ['orders', 'settings'].includes(view);
-  bottomNav.classList.toggle('hidden', !showNav);
-
-  // Update active nav item
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
-  });
+  document.getElementById('bottom-nav').classList.toggle('hidden', !showNav);
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
 
   state.view = view;
-
-  // Render appropriate view
   if (view === 'orders')  renderOrdersList();
-  if (view === 'detail' && data.order) renderDetail(data.order);
+  if (view === 'detail' && data.order) { state.selectedOrder = data.order; renderDetail(data.order); }
   if (view === 'settings') renderSettings();
   if (view === 'setup')   renderSetup();
   if (view === 'auth')    renderAuth();
 }
 
-// ── Render: Auth ───────────────────────────────────────────
+// ── 表示: 認証 ─────────────────────────────────────────
 function renderAuth() {
-  const saved = loadStorage();
-  const hasClientId = !!saved.clientId;
-
+  const { clientId } = loadStorage();
   document.getElementById('view-auth').innerHTML = `
     <div class="auth-container">
       <div class="auth-logo">
-        <img src="icons/icon.svg" alt="BASE注文管理" width="80">
+        <img src="icons/icon.svg" alt="" width="80">
         <h1>BASE 注文管理</h1>
         <p>Googleアカウントでサインインして<br>注文を管理しましょう</p>
       </div>
-      ${!hasClientId ? `
+      ${!clientId ? `
         <div style="width:100%">
-          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;color:#666">
-            OAuthクライアントID
-          </label>
+          <label class="input-label">OAuthクライアントID</label>
           <input id="input-client-id-auth" class="text-input" type="text"
-            placeholder="xxxx.apps.googleusercontent.com"
-            value="${escHtml(saved.clientId || '')}">
-          <p class="text-sm text-secondary mt-8">
-            <a href="#" id="link-setup-help">設定方法を確認する</a>
-          </p>
-        </div>
-      ` : ''}
-      <button id="btn-signin" class="btn btn-primary btn-large">
-        Googleでサインイン
-      </button>
-      ${hasClientId ? `<p class="text-sm text-secondary">クライアントID: ${escHtml(saved.clientId.slice(0,20))}...</p>` : ''}
-      <button class="btn btn-secondary mt-8" id="btn-goto-setup" style="width:100%">
-        初期設定 / クライアントID変更
-      </button>
-    </div>
-  `;
-
+            placeholder="xxxx.apps.googleusercontent.com" value="${escHtml(clientId || '')}">
+        </div>` : ''}
+      <button id="btn-signin" class="btn btn-primary btn-large">Googleでサインイン</button>
+      ${clientId ? `<p class="hint-text">クライアントID設定済み</p>` : ''}
+      <button id="btn-goto-setup" class="btn btn-secondary" style="width:100%">初期設定を確認する</button>
+    </div>`;
   document.getElementById('btn-signin').addEventListener('click', signIn);
-  document.getElementById('btn-goto-setup')?.addEventListener('click', () => navigate('setup'));
-  document.getElementById('link-setup-help')?.addEventListener('click', (e) => { e.preventDefault(); navigate('setup'); });
+  document.getElementById('btn-goto-setup').addEventListener('click', () => navigate('setup'));
 }
 
-// ── Render: Setup ──────────────────────────────────────────
+// ── 表示: セットアップ ─────────────────────────────────
 function renderSetup() {
-  const saved = loadStorage();
+  const { clientId } = loadStorage();
   document.getElementById('view-setup').innerHTML = `
-    <div class="app-header" style="position:sticky;top:0">
+    <div class="app-header" style="position:sticky;top:0;z-index:10">
       <h1>初期設定</h1>
-      ${saved.clientId ? `<button class="icon-btn" id="btn-skip-setup">×</button>` : ''}
+      ${clientId ? `<button id="btn-skip" class="icon-btn">×</button>` : ''}
     </div>
     <div class="scroll-content">
-      <div style="padding:12px">
-        <div class="detail-section">
-          <div class="detail-section-title">OAuthクライアントIDの取得方法</div>
-          <div class="detail-row" style="flex-direction:column;gap:8px">
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <span class="step-num">1</span>
-              <p style="font-size:13px;color:#666;line-height:1.6">
-                <a href="https://console.cloud.google.com/" target="_blank" style="color:#e63b2e">
-                  Google Cloud Console
-                </a> で新規プロジェクトを作成
-              </p>
-            </div>
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <span class="step-num">2</span>
-              <p style="font-size:13px;color:#666;line-height:1.6">
-                「APIとサービス」→「ライブラリ」で<br>
-                <strong>Google Sheets API</strong> を有効化
-              </p>
-            </div>
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <span class="step-num">3</span>
-              <p style="font-size:13px;color:#666;line-height:1.6">
-                「認証情報」→「認証情報を作成」→<br>
-                「OAuthクライアントID」→<strong>ウェブアプリケーション</strong>を選択
-              </p>
-            </div>
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <span class="step-num">4</span>
-              <p style="font-size:13px;color:#666;line-height:1.6">
-                「承認済みのJavaScriptオリジン」に<br>
-                このアプリのURL（GitHub PagesのURL等）を追加
-              </p>
-            </div>
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <span class="step-num">5</span>
-              <p style="font-size:13px;color:#666;line-height:1.6">
-                発行されたクライアントIDを下に入力
-              </p>
-            </div>
+      <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+        <div class="card">
+          <div class="card-title">OAuthクライアントIDの取得</div>
+          <div class="setup-steps">
+            ${[
+              ['Google Cloud Console でプロジェクトを作成', 'console.cloud.google.com'],
+              ['「APIとサービス」→「ライブラリ」で <strong>Google Sheets API</strong> を有効化'],
+              ['「認証情報」→「OAuthクライアントID」→<strong>ウェブアプリケーション</strong>を作成'],
+              ['「承認済みのJavaScriptオリジン」に <code>https://yuumato.github.io</code> を追加'],
+              ['発行されたクライアントIDを下に貼り付け'],
+            ].map((s, i) => `
+              <div class="setup-step">
+                <span class="step-num">${i+1}</span>
+                <span>${s[0]}</span>
+              </div>`).join('')}
           </div>
         </div>
-
-        <div class="detail-section" style="margin-top:8px">
-          <div class="detail-section-title">クライアントIDを入力</div>
-          <div class="detail-row" style="flex-direction:column;gap:8px">
+        <div class="card">
+          <div class="card-title">クライアントIDを入力</div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px">
             <input id="input-client-id-settings" class="text-input" type="text"
-              placeholder="xxxx.apps.googleusercontent.com"
-              value="${escHtml(saved.clientId || '')}">
-            <button id="btn-save-and-signin" class="btn btn-primary btn-full">
-              保存してサインイン
-            </button>
-          </div>
-        </div>
-
-        <div class="detail-section" style="margin-top:8px">
-          <div class="detail-section-title">スプレッドシートID</div>
-          <div class="detail-row">
-            <span class="detail-label">ID</span>
-            <span class="detail-value text-sm">${SPREADSHEET_ID}</span>
+              placeholder="xxxx.apps.googleusercontent.com" value="${escHtml(clientId || '')}">
+            <button id="btn-save-signin" class="btn btn-primary btn-full">保存してサインイン</button>
           </div>
         </div>
       </div>
-    </div>
-  `;
-
-  document.getElementById('btn-save-and-signin')?.addEventListener('click', () => {
+    </div>`;
+  document.getElementById('btn-save-signin')?.addEventListener('click', () => {
     const cid = document.getElementById('input-client-id-settings')?.value.trim();
     if (!cid) { showToast('クライアントIDを入力してください'); return; }
     state.clientId = cid;
     saveStorage({ clientId: cid });
     signIn();
   });
-
-  document.getElementById('btn-skip-setup')?.addEventListener('click', () => navigate('auth'));
+  document.getElementById('btn-skip')?.addEventListener('click', () => navigate('auth'));
 }
 
-// ── Render: Orders List ────────────────────────────────────
+// ── 表示: 注文一覧 ─────────────────────────────────────
 function renderOrdersList() {
-  const list = document.getElementById('orders-list');
-  if (!list) return;
+  const listEl = document.getElementById('orders-list');
+  if (!listEl) return;
 
-  // Update filter badge counts
-  const counts = { all: state.orders.length, pending: 0, processing: 0, shipped: 0, cancelled: 0 };
-  state.orders.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++; });
+  // バッジ更新
+  const counts = { all: state.orders.length };
+  STATUS_OPTIONS.forEach(s => { counts[s] = 0; });
+  state.orders.forEach(o => { if (counts[o.status_raw] !== undefined) counts[o.status_raw]++; });
 
   document.querySelectorAll('.filter-tabs .tab').forEach(tab => {
     const f = tab.dataset.filter;
-    const c = counts[f] || 0;
-    const label = tab.dataset.label || tab.textContent.replace(/\d+$/, '').trim();
-    tab.dataset.label = label;
-    tab.innerHTML = `${label}${c > 0 && f !== 'all' ? ` <span class="badge">${c}</span>` : ''}`;
+    const label = tab.dataset.label;
+    const cnt = f === 'all' ? '' : (counts[f] > 0 ? ` <span class="badge">${counts[f]}</span>` : '');
+    tab.innerHTML = label + cnt;
     tab.classList.toggle('active', f === state.filter);
   });
 
   if (state.isLoading && !state.orders.length) {
-    list.innerHTML = `<div class="state-box"><div class="spinner"></div><p>読み込み中...</p></div>`;
+    listEl.innerHTML = `<div class="state-box"><div class="spinner"></div><p>読み込み中...</p></div>`;
     return;
   }
-
   if (!state.orders.length) {
-    list.innerHTML = `
-      <div class="state-box">
-        <div class="state-icon">📦</div>
-        <p>注文データがありません<br>スプレッドシートにデータを追加してください</p>
-        <button class="btn btn-secondary state-action" id="btn-reload">再読み込み</button>
-      </div>`;
+    listEl.innerHTML = `<div class="state-box">
+      <div class="state-icon">📦</div>
+      <p>注文データがありません</p>
+      <button class="btn btn-secondary state-action" id="btn-reload">再読み込み</button>
+    </div>`;
     document.getElementById('btn-reload')?.addEventListener('click', () => loadOrders(true));
     return;
   }
-
-  if (!state.filteredOrders.length) {
-    list.innerHTML = `
-      <div class="state-box">
-        <div class="state-icon">🔍</div>
-        <p>該当する注文が見つかりません</p>
-      </div>`;
+  if (!state.filtered.length) {
+    listEl.innerHTML = `<div class="state-box"><div class="state-icon">🔍</div><p>該当する注文がありません</p></div>`;
     return;
   }
 
-  list.innerHTML = state.filteredOrders.map(order => orderCardHTML(order)).join('');
-
-  list.querySelectorAll('.order-card').forEach(card => {
+  listEl.innerHTML = state.filtered.map(o => orderCardHTML(o)).join('');
+  listEl.querySelectorAll('.order-card').forEach(card => {
     card.addEventListener('click', () => {
-      const order = state.filteredOrders.find(o => o.order_id === card.dataset.id);
-      if (order) navigate('detail', { order });
+      const o = state.filtered.find(x => x._row === Number(card.dataset.row));
+      if (o) navigate('detail', { order: o });
     });
   });
 }
 
-function orderCardHTML(order) {
-  const productSummary = order.products.length
-    ? order.products.map(p => `${p.name}${p.quantity ? ` ×${p.quantity}` : ''}`).join('、')
-    : '(商品情報なし)';
+function statusBadge(raw) {
+  const def = STATUS_DEF[raw] || { css: 'unknown', label: raw || '不明' };
+  return `<span class="status-badge status-${def.css}">${def.label}</span>`;
+}
 
+function fmtAmount(v) {
+  if (!v) return '';
+  const n = parseFloat(String(v).replace(/[,¥,，]/g, ''));
+  if (isNaN(n)) return String(v);
+  return '¥' + n.toLocaleString('ja-JP');
+}
+
+function orderCardHTML(o) {
   return `
-    <div class="order-card" data-id="${escHtml(order.order_id)}">
-      <div class="order-card-header">
-        <span class="order-number">${escHtml(order.order_id)}</span>
-        <span class="order-date">${escHtml(order.order_date)}</span>
+    <div class="order-card" data-row="${o._row}">
+      <div class="card-row-1">
+        <span class="card-no">No.${escHtml(o.seq_no)}</span>
+        <span class="card-date">${escHtml(o.order_date)}</span>
+        ${statusBadge(o.status_raw)}
       </div>
-      <div class="order-name">${escHtml(order.customer_name)}</div>
-      <div class="order-product">${escHtml(productSummary)}</div>
-      <div class="order-card-footer">
-        <span class="order-amount">${escHtml(formatAmount(order.total_amount))}</span>
-        <span class="status-badge status-${order.status}">${STATUS_LABELS[order.status] || order.shipping_status_raw}</span>
+      <div class="card-row-2">
+        <span class="card-shop">${escHtml(o.shop_name)}</span>
+        <span class="card-name">${escHtml(o.recipient_name)}</span>
+      </div>
+      <div class="card-row-3">${escHtml(o.product_title_short)}</div>
+      <div class="card-row-4">
+        <span class="card-amount">${escHtml(fmtAmount(o.total_amount))}</span>
+        ${o.profit ? `<span class="card-profit ${parseFloat(o.profit) >= 0 ? 'profit-pos' : 'profit-neg'}">利益 ${escHtml(fmtAmount(o.profit))} (${escHtml(o.profit_rate)})</span>` : ''}
       </div>
     </div>`;
 }
 
-// ── Render: Order Detail ───────────────────────────────────
-function renderDetail(order) {
-  state.selectedOrderId = order.order_id;
-  const el = document.getElementById('view-detail');
+// ── 表示: 注文詳細 ─────────────────────────────────────
+function renderDetail(o) {
+  const address = [o.prefecture, o.city, o.address_detail].filter(Boolean).join(' ');
+  const zip = o.zip ? `〒${o.zip}` : '';
+  const profitColor = o.profit ? (parseFloat(o.profit) >= 0 ? '#34c759' : '#ff3b30') : 'inherit';
 
-  const address = [order.zip ? `〒${order.zip}` : '', order.prefecture, order.city, order.address1, order.address2]
-    .filter(Boolean).join(' ');
+  document.querySelector('#view-detail .detail-scroll').innerHTML = `
+    ${detailSection('注文情報', [
+      ['No.',         `<strong>${escHtml(o.seq_no)}</strong>`],
+      ['注文日',       escHtml(o.order_date)],
+      ['ステータス',   statusBadge(o.status_raw)],
+      ['BASE注文番号', `<span class="mono">${escHtml(o.base_order_id)}</span>`],
+      ['ショップ',     escHtml(o.shop_name)],
+    ])}
 
-  const productsHTML = order.products.length
-    ? order.products.map(p => `
-        <div class="detail-row">
-          <span class="detail-label">商品</span>
-          <span class="detail-value">${escHtml(p.name)}${p.id ? ` <span class="text-sm text-secondary">(${escHtml(p.id)})</span>` : ''}<br>
-            <span class="text-sm text-secondary">${p.quantity ? `${escHtml(p.quantity)}個` : ''} ${p.unit_price ? formatAmount(p.unit_price) : ''}</span>
-          </span>
-        </div>`).join('')
-    : `<div class="detail-row"><span class="detail-label">商品</span><span class="detail-value text-secondary">なし</span></div>`;
+    ${detailSection('お客様情報', [
+      ['宛名',   escHtml(o.recipient_name)],
+      ['〒・住所', escHtml([zip, address].filter(Boolean).join(' '))],
+      ['電話',   o.phone ? `<a href="tel:${escHtml(o.phone)}" class="link">${escHtml(o.phone)}</a>` : ''],
+      ['メール', o.email ? `<a href="mailto:${escHtml(o.email)}" class="link">${escHtml(o.email)}</a>` : ''],
+    ].filter(r => r[1]))}
 
-  el.querySelector('.detail-scroll').innerHTML = `
-    <div class="detail-section">
-      <div class="detail-section-title">注文情報</div>
-      <div class="detail-row">
-        <span class="detail-label">注文番号</span>
-        <span class="detail-value" style="font-weight:700;color:#e63b2e">${escHtml(order.order_id)}</span>
-      </div>
-      <div class="detail-row">
-        <span class="detail-label">注文日時</span>
-        <span class="detail-value">${escHtml(order.order_date)}</span>
-      </div>
-      <div class="detail-row">
-        <span class="detail-label">発送状況</span>
-        <span class="detail-value"><span class="status-badge status-${order.status}">${STATUS_LABELS[order.status] || escHtml(order.shipping_status_raw)}</span></span>
-      </div>
-      <div class="detail-row">
-        <span class="detail-label">支払い</span>
-        <span class="detail-value">${escHtml(order.payment_method)} <span class="status-badge ${order.payment_status?.includes('済') ? 'status-shipped' : 'status-pending'}">${escHtml(order.payment_status)}</span></span>
-      </div>
-    </div>
+    ${detailSection('商品情報', [
+      ['商品名',     `<span class="product-title">${escHtml(o.product_title)}</span>`],
+      ['バリエーション', escHtml(o.variation)],
+      ['数量',     escHtml(o.quantity)],
+      ['単価',     escHtml(fmtAmount(o.unit_price))],
+      ['合計',     `<strong>${escHtml(fmtAmount(o.total_amount))}</strong>`],
+      ['手数料',   escHtml(fmtAmount(o.commission))],
+      ['商品ページ', o.product_page ? `<a href="https://${escHtml(o.product_page)}" target="_blank" class="link">開く</a>` : ''],
+    ].filter(r => r[1]))}
 
-    <div class="detail-section">
-      <div class="detail-section-title">お客様情報</div>
-      <div class="detail-row">
-        <span class="detail-label">お名前</span>
-        <span class="detail-value">${escHtml(order.customer_name)}</span>
-      </div>
-      ${order.email ? `<div class="detail-row"><span class="detail-label">メール</span><a class="detail-value" href="mailto:${escHtml(order.email)}" style="color:#e63b2e">${escHtml(order.email)}</a></div>` : ''}
-      ${order.phone ? `<div class="detail-row"><span class="detail-label">電話</span><a class="detail-value" href="tel:${escHtml(order.phone)}" style="color:#e63b2e">${escHtml(order.phone)}</a></div>` : ''}
-      ${address ? `<div class="detail-row"><span class="detail-label">住所</span><span class="detail-value">${escHtml(address)}</span></div>` : ''}
-    </div>
+    ${detailSection('仕入れ情報', [
+      ['仕入注文番号', escHtml(o.purchase_order)],
+      ['ASIN(子)',    escHtml(o.asin_child)],
+      ['仕入金額',   escHtml(fmtAmount(o.purchase_price))],
+      ['到着予定日', escHtml(o.arrival_date1)],
+      ['到着日',     escHtml(o.arrival_date)],
+      ['Amazonリンク', o.amazon_link ? `<a href="https://${escHtml(o.amazon_link)}" target="_blank" class="link">開く</a>` : ''],
+      ['Ama注文ページ', o.amazon_page ? `<a href="${escHtml(o.amazon_page)}" target="_blank" class="link">開く</a>` : ''],
+    ].filter(r => r[1]))}
 
-    <div class="detail-section">
-      <div class="detail-section-title">注文商品</div>
-      ${productsHTML}
-      ${order.discount ? `<div class="detail-row"><span class="detail-label">割引</span><span class="detail-value">-${escHtml(formatAmount(order.discount))}</span></div>` : ''}
-      ${order.shipping_fee ? `<div class="detail-row"><span class="detail-label">送料</span><span class="detail-value">${escHtml(formatAmount(order.shipping_fee))}</span></div>` : ''}
-      <div class="detail-row">
-        <span class="detail-label">合計金額</span>
-        <span class="detail-value large">${escHtml(formatAmount(order.total_amount))}</span>
-      </div>
-    </div>
+    ${detailSection('配送', [
+      ['追跡番号', escHtml(o.tracking_number) || '<span class="hint">未入力</span>'],
+      ['出荷通知メール', escHtml(o.mail_delivery)],
+      ['評価依頼メール', escHtml(o.mail_review)],
+    ])}
 
-    <div class="detail-section">
-      <div class="detail-section-title">発送管理</div>
-      <div class="detail-row">
-        <span class="detail-label">追跡番号</span>
-        <span class="detail-value">${escHtml(order.tracking_number) || '<span class="text-secondary">未入力</span>'}</span>
-      </div>
-      ${order.memo ? `<div class="detail-row"><span class="detail-label">メモ</span><span class="detail-value">${escHtml(order.memo)}</span></div>` : ''}
-      <div class="detail-row" style="flex-direction:column;gap:8px">
-        <label style="font-size:12px;color:#999;font-weight:600">追跡番号を更新</label>
-        <input id="input-tracking" class="text-input" type="text"
-          placeholder="追跡番号を入力"
-          value="${escHtml(order.tracking_number)}">
-      </div>
-      <div class="detail-row" style="flex-direction:column;gap:8px">
-        <label style="font-size:12px;color:#999;font-weight:600">発送状況を変更</label>
-        <div style="display:flex;gap:8px">
-          <select id="select-status" class="select-input" style="flex:1">
-            <option value="未発送" ${order.shipping_status_raw === '未発送' ? 'selected' : ''}>未発送</option>
-            <option value="対応中" ${order.shipping_status_raw === '対応中' ? 'selected' : ''}>対応中</option>
-            <option value="発送済み" ${order.shipping_status_raw === '発送済み' ? 'selected' : ''}>発送済み</option>
-            <option value="キャンセル" ${order.shipping_status_raw === 'キャンセル' ? 'selected' : ''}>キャンセル</option>
-          </select>
-          <button id="btn-update-status" class="btn btn-primary" style="height:44px;padding:0 16px">
-            更新
-          </button>
+    ${o.profit ? detailSection('収益', [
+      ['売上',   escHtml(fmtAmount(o.total_amount))],
+      ['コスト', escHtml(fmtAmount(o.cost))],
+      ['利益',   `<strong style="color:${profitColor}">${escHtml(fmtAmount(o.profit))}</strong>`],
+      ['利益率', `<strong style="color:${profitColor}">${escHtml(o.profit_rate)}</strong>`],
+    ]) : ''}
+
+    <div class="card" style="margin:8px 12px">
+      <div class="card-title">ステータス・追跡番号を更新</div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label class="input-label">追跡番号</label>
+          <input id="input-tracking" class="text-input" type="text"
+            placeholder="追跡番号を入力" value="${escHtml(o.tracking_number)}">
         </div>
+        <div>
+          <label class="input-label">ステータス</label>
+          <select id="select-status" class="select-input">
+            ${STATUS_OPTIONS.map(s =>
+              `<option value="${s}" ${o.status_raw === s ? 'selected' : ''}>${s}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <button id="btn-update" class="btn btn-primary btn-full">スプレッドシートに反映</button>
       </div>
     </div>
+
+    <div style="height:16px"></div>
   `;
 
-  document.getElementById('btn-update-status')?.addEventListener('click', () => {
-    const newStatus = document.getElementById('select-status')?.value;
-    const tracking = document.getElementById('input-tracking')?.value.trim();
-    updateShippingStatus(order, newStatus, tracking);
+  document.getElementById('btn-update')?.addEventListener('click', () => {
+    const newStatus  = document.getElementById('select-status')?.value;
+    const tracking   = document.getElementById('input-tracking')?.value.trim();
+    updateOrder(o, newStatus, tracking);
   });
 }
 
-// ── Render: Settings ──────────────────────────────────────
-function renderSettings() {
-  const saved = loadStorage();
-  const el = document.getElementById('view-settings');
-  const syncText = state.lastSynced
-    ? state.lastSynced.toLocaleTimeString('ja-JP')
-    : '未同期';
+function detailSection(title, rows) {
+  return `
+    <div class="card" style="margin:8px 12px">
+      <div class="card-title">${title}</div>
+      ${rows.map(([label, value]) => `
+        <div class="detail-row">
+          <span class="detail-label">${label}</span>
+          <span class="detail-value">${value}</span>
+        </div>`).join('')}
+    </div>`;
+}
 
-  el.querySelector('.settings-scroll').innerHTML = `
-    <div class="detail-section">
-      <div class="detail-section-title">アカウント</div>
-      <div class="settings-account-info">
-        <div class="settings-account-avatar">👤</div>
-        <div>
-          <div class="settings-account-name">${state.isSignedIn ? 'サインイン済み' : '未サインイン'}</div>
-          <div class="settings-account-email">最終同期: ${syncText}</div>
+// ── 表示: 設定 ─────────────────────────────────────────
+function renderSettings() {
+  const syncText = state.lastSynced ? state.lastSynced.toLocaleTimeString('ja-JP') : '未同期';
+  document.querySelector('#view-settings .settings-scroll').innerHTML = `
+    <div style="padding:8px 0;display:flex;flex-direction:column;gap:0">
+      <div class="card" style="margin:8px 12px">
+        <div class="card-title">アカウント</div>
+        <div class="detail-row"><span class="detail-label">状態</span>
+          <span class="detail-value">${state.isSignedIn ? '✅ サインイン済み' : '未サインイン'}</span></div>
+        <div class="detail-row"><span class="detail-label">最終同期</span>
+          <span class="detail-value">${syncText}</span></div>
+        <div style="padding:10px 14px">
+          <button id="btn-signout" class="btn btn-outline btn-full">サインアウト</button>
         </div>
       </div>
-      <div class="detail-row">
-        <button id="btn-signout" class="btn btn-outline btn-full">サインアウト</button>
-      </div>
-    </div>
 
-    <div class="detail-section">
-      <div class="detail-section-title">接続設定</div>
-      <div class="settings-row">
-        <label>OAuthクライアントID</label>
-        <input id="input-client-id-settings" class="text-input" type="text"
-          placeholder="xxxx.apps.googleusercontent.com"
-          value="${escHtml(saved.clientId || '')}">
-        <button id="btn-update-client-id" class="btn btn-secondary btn-full mt-8">変更して再サインイン</button>
+      <div class="card" style="margin:8px 12px">
+        <div class="card-title">データ</div>
+        <div class="detail-row"><span class="detail-label">注文件数</span>
+          <span class="detail-value">${state.orders.length} 件</span></div>
+        <div class="detail-row"><span class="detail-label">シート名</span>
+          <span class="detail-value">${escHtml(state.sheetName)}</span></div>
+        <div style="padding:10px 14px">
+          <button id="btn-refresh-data" class="btn btn-secondary btn-full">データを再読み込み</button>
+        </div>
       </div>
-      <div class="settings-row">
-        <label>スプレッドシートID</label>
-        <p>${SPREADSHEET_ID}</p>
-      </div>
-      <div class="settings-row">
-        <label>シート名</label>
-        <p>${escHtml(state.sheetName)}</p>
-      </div>
-    </div>
 
-    <div class="detail-section">
-      <div class="detail-section-title">データ</div>
-      <div class="detail-row">
-        <span class="detail-label">注文数</span>
-        <span class="detail-value">${state.orders.length} 件</span>
+      <div class="card" style="margin:8px 12px">
+        <div class="card-title">接続設定</div>
+        <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px">
+          <label class="input-label">OAuthクライアントID</label>
+          <input id="input-cid-settings" class="text-input" type="text"
+            placeholder="xxxx.apps.googleusercontent.com"
+            value="${escHtml(loadStorage().clientId || '')}">
+          <button id="btn-update-cid" class="btn btn-secondary btn-full">変更して再サインイン</button>
+        </div>
+        <div class="detail-row"><span class="detail-label">スプレッドシートID</span>
+          <span class="detail-value" style="font-size:11px;word-break:break-all">${SPREADSHEET_ID}</span></div>
       </div>
-      <div class="detail-row">
-        <button id="btn-refresh-settings" class="btn btn-secondary btn-full">データを再読み込み</button>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-title">初期設定ガイド</div>
-      <div class="detail-row">
-        <button id="btn-goto-setup-settings" class="btn btn-secondary btn-full">設定ガイドを表示</button>
-      </div>
-    </div>
-  `;
+    </div>`;
 
   document.getElementById('btn-signout')?.addEventListener('click', signOut);
-  document.getElementById('btn-refresh-settings')?.addEventListener('click', () => {
+  document.getElementById('btn-refresh-data')?.addEventListener('click', () => {
     sessionStorage.removeItem('base_orders');
     loadOrders(true);
     showToast('再読み込み中...');
     navigate('orders');
   });
-  document.getElementById('btn-update-client-id')?.addEventListener('click', () => {
-    const cid = document.getElementById('input-client-id-settings')?.value.trim();
-    if (!cid) { showToast('クライアントIDを入力してください'); return; }
+  document.getElementById('btn-update-cid')?.addEventListener('click', () => {
+    const cid = document.getElementById('input-cid-settings')?.value.trim();
+    if (!cid) return;
     state.clientId = cid;
     saveStorage({ clientId: cid, accessToken: null });
     gapi.client.setToken(null);
     initTokenClient(cid);
     state.tokenClient?.requestAccessToken({ prompt: 'consent' });
   });
-  document.getElementById('btn-goto-setup-settings')?.addEventListener('click', () => navigate('setup'));
 }
 
-// ── Toast ─────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────
 let toastTimer;
-function showToast(msg, duration = 2500) {
-  const toast = document.getElementById('toast');
-  toast.textContent = msg;
-  toast.classList.add('show');
+function showToast(msg, dur = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+  if (dur < 60000) toastTimer = setTimeout(() => t.classList.remove('show'), dur);
 }
 
-// ── Escape HTML ───────────────────────────────────────────
-function escHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Event Wiring ──────────────────────────────────────────
+// ── イベント配線 ───────────────────────────────────────
 function wireEvents() {
-  // Bottom nav
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.view));
+  document.querySelectorAll('.nav-item').forEach(b => {
+    b.addEventListener('click', () => navigate(b.dataset.view));
   });
 
-  // Back button
   document.getElementById('btn-back')?.addEventListener('click', () => navigate('orders'));
 
-  // Refresh button
   document.getElementById('btn-refresh')?.addEventListener('click', () => {
     sessionStorage.removeItem('base_orders');
     loadOrders(true);
+    showToast('再読み込み中...');
   });
 
-  // Search toggle
   document.getElementById('btn-search-toggle')?.addEventListener('click', () => {
     state.showSearch = !state.showSearch;
-    const bar = document.getElementById('search-bar');
-    bar.classList.toggle('hidden', !state.showSearch);
-    if (state.showSearch) {
-      document.getElementById('search-input')?.focus();
-    } else {
+    document.getElementById('search-bar').classList.toggle('hidden', !state.showSearch);
+    if (state.showSearch) document.getElementById('search-input')?.focus();
+    else {
       state.searchQuery = '';
       if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
-      applyFilter();
-      renderOrdersList();
+      applyFilter(); renderOrdersList();
     }
   });
 
-  // Search input
   let searchTimer;
-  document.getElementById('search-input')?.addEventListener('input', (e) => {
+  document.getElementById('search-input')?.addEventListener('input', e => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       state.searchQuery = e.target.value.trim();
-      applyFilter();
-      renderOrdersList();
+      applyFilter(); renderOrdersList();
     }, 200);
   });
 
-  // Filter tabs
   document.querySelectorAll('.filter-tabs .tab').forEach(tab => {
     tab.addEventListener('click', () => {
       state.filter = tab.dataset.filter;
-      applyFilter();
-      renderOrdersList();
+      applyFilter(); renderOrdersList();
     });
   });
 }
 
-// ── Init ──────────────────────────────────────────────────
+// ── 初期化 ─────────────────────────────────────────────
 function init() {
-  // Register service worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
   wireEvents();
 
-  // Show setup if no clientId; otherwise wait for API libs
   const { clientId } = loadStorage();
-  if (!clientId) {
-    navigate('setup');
-  } else {
-    navigate('auth');
-  }
+  navigate(clientId ? 'auth' : 'setup');
 
-  // Poll for API readiness (libs load async)
   const poll = setInterval(() => {
     if (window.gapi && window.google?.accounts?.oauth2) {
       clearInterval(poll);
@@ -950,9 +756,5 @@ function init() {
     }
   }, 100);
 }
-
-// Expose callbacks for script onload attributes
-window.gapiOnLoad = onGapiLoaded;
-window.gisOnLoad  = onGisLoaded;
 
 document.addEventListener('DOMContentLoaded', init);
