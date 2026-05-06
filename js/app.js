@@ -5,13 +5,24 @@ const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 const STORAGE_KEY = 'base_order_pwa';
 
 const STATUS_DEF = {
-  '完了':         { css: 'completed', label: '完了' },
-  '評価依頼待ち': { css: 'review',    label: '評価依頼待ち' },
-  '仕入済':       { css: 'sourced',   label: '仕入済' },
-  '仕入れ済':     { css: 'sourced',   label: '仕入済' },
-  'キャンセル':   { css: 'cancelled', label: 'キャンセル' },
+  '未仕入':           { css: 'unknown',   label: '未仕入' },
+  '仕入済':           { css: 'sourced',   label: '仕入済' },
+  '仕入れ済':         { css: 'sourced',   label: '仕入済' },
+  '仕入済(倉庫経由)': { css: 'sourced',   label: '仕入済(倉庫経由)' },
+  '倉庫・着':         { css: 'sourced',   label: '倉庫・着' },
+  '倉庫・著':         { css: 'sourced',   label: '倉庫・着' },
+  'キャンセル依頼':   { css: 'cancelled', label: 'キャンセル依頼' },
+  'キャンセル依頼済': { css: 'cancelled', label: 'キャンセル依頼済' },
+  'キャンセル':       { css: 'cancelled', label: 'キャンセル' },
+  '評価依頼待ち':     { css: 'review',    label: '評価依頼待ち' },
+  '完了':             { css: 'completed', label: '完了' },
+  'その他':           { css: 'unknown',   label: 'その他' },
 };
-const STATUS_OPTIONS = ['仕入済', '評価依頼待ち', '完了', 'キャンセル'];
+const STATUS_OPTIONS = [
+  '未仕入', '仕入済', '仕入済(倉庫経由)', '倉庫・着',
+  'キャンセル依頼', 'キャンセル依頼済', 'キャンセル',
+  '評価依頼待ち', '完了', 'その他',
+];
 
 // 列マッピング UI の定義
 const FIELD_CONFIG = [
@@ -66,7 +77,14 @@ function loadStorage() { try { return JSON.parse(localStorage.getItem(STORAGE_KE
 function saveStorage(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify({...loadStorage(),...d})); }
 function loadCache()    { try { return JSON.parse(sessionStorage.getItem('base_orders')||'null'); } catch { return null; } }
 function saveCache(o)   { try { sessionStorage.setItem('base_orders', JSON.stringify(o)); } catch {} }
-function loadColOverrides() { try { return JSON.parse(localStorage.getItem('base_col_overrides')||'{}'); } catch { return {}; } }
+function loadColOverrides() {
+  // AL=到着予定日, AZ=仕入金額 をデフォルトとして設定
+  const defaults = { arrival_date1: 'AL', purchase_price: 'AZ' };
+  try {
+    const saved = JSON.parse(localStorage.getItem('base_col_overrides') || '{}');
+    return { ...defaults, ...saved };
+  } catch { return defaults; }
+}
 function saveColOverrides(d) { localStorage.setItem('base_col_overrides', JSON.stringify(d)); }
 
 // 列文字 → 0始まりインデックス（A=0, B=1, ... Z=25, AA=26, ...）
@@ -390,18 +408,29 @@ function colLetter(idx) {
   return s;
 }
 
-async function updateOrder(order, newStatus, tracking) {
+async function updateOrder(order, newStatus, tracking, arrivalDate, purchasePrice) {
   state.isLoading = true; showToast('更新中...', 60000);
   try {
     const data = [];
-    const sc = state.colMap.status, tc = state.colMap.tracking, r = order._row;
-    if (sc >= 0) data.push({ range: `${state.sheetName}!${colLetter(sc)}${r}`, values: [[newStatus]] });
-    if (tc >= 0) data.push({ range: `${state.sheetName}!${colLetter(tc)}${r}`, values: [[tracking]] });
+    const cm = state.colMap, r = order._row;
+    const push = (field, value) => {
+      const c = cm[field];
+      if (c >= 0) data.push({ range: `${state.sheetName}!${colLetter(c)}${r}`, values: [[value]] });
+    };
+    push('status', newStatus);
+    push('tracking', tracking);
+    if (arrivalDate  !== undefined) push('arrival_date1', arrivalDate);
+    if (purchasePrice !== undefined) {
+      const n = purchasePrice === '' ? '' : (isNaN(Number(purchasePrice)) ? purchasePrice : Number(purchasePrice));
+      push('purchase_price', n);
+    }
     await gapi.client.sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
       resource: { valueInputOption: 'RAW', data },
     });
     order.status_raw = newStatus; order.tracking = tracking;
+    if (arrivalDate  !== undefined) order.arrival_date1  = arrivalDate;
+    if (purchasePrice !== undefined) order.purchase_price = purchasePrice;
     saveCache(state.orders); applyFilter();
     showToast('更新しました ✓'); renderDetail(order);
   } catch(e) { console.error(e); showToast('更新に失敗しました'); }
@@ -642,13 +671,8 @@ function renderDetail(o) {
     ])}
 
     <div class="card" style="margin:6px 10px">
-      <div class="card-title">ステータス・追跡番号を更新</div>
+      <div class="card-title">更新（スプレッドシートに反映）</div>
       <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
-        <div>
-          <label class="input-label">追跡番号</label>
-          <input id="input-tracking" class="text-input" type="text"
-            placeholder="追跡番号を入力" value="${escHtml(o.tracking)}">
-        </div>
         <div>
           <label class="input-label">ステータス</label>
           <select id="select-status" class="select-input">
@@ -656,6 +680,21 @@ function renderDetail(o) {
               `<option value="${s}" ${o.status_raw===s?'selected':''}>${s}</option>`
             ).join('')}
           </select>
+        </div>
+        <div>
+          <label class="input-label">到着予定日（AL列）</label>
+          <input id="input-arrival" class="text-input" type="text"
+            placeholder="例: 2024/1/15" value="${escHtml(o.arrival_date1)}">
+        </div>
+        <div>
+          <label class="input-label">仕入金額 円（AZ列）</label>
+          <input id="input-purchase" class="text-input" type="number"
+            inputmode="numeric" placeholder="例: 1500" value="${escHtml(o.purchase_price)}">
+        </div>
+        <div>
+          <label class="input-label">追跡番号</label>
+          <input id="input-tracking" class="text-input" type="text"
+            placeholder="追跡番号を入力" value="${escHtml(o.tracking)}">
         </div>
         <button id="btn-update" class="btn btn-primary btn-full">スプレッドシートに反映</button>
       </div>
@@ -665,7 +704,9 @@ function renderDetail(o) {
   document.getElementById('btn-update')?.addEventListener('click', () => {
     updateOrder(o,
       document.getElementById('select-status')?.value,
-      document.getElementById('input-tracking')?.value.trim()
+      document.getElementById('input-tracking')?.value.trim(),
+      document.getElementById('input-arrival')?.value.trim(),
+      document.getElementById('input-purchase')?.value.trim()
     );
   });
 }
