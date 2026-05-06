@@ -13,6 +13,45 @@ const STATUS_DEF = {
 };
 const STATUS_OPTIONS = ['仕入済', '評価依頼待ち', '完了', 'キャンセル'];
 
+// 列マッピング UI の定義
+const FIELD_CONFIG = [
+  { key: 'seq_no',         label: 'No.',          group: '注文' },
+  { key: 'order_date',     label: '注文日',        group: '注文' },
+  { key: 'status',         label: 'ステータス',    group: '注文' },
+  { key: 'base_order_id',  label: 'BASE注文番号',  group: '注文' },
+  { key: 'shop_name',      label: 'ショップ名',    group: '注文' },
+  { key: 'recipient_name', label: '送付先名',      group: 'お客様' },
+  { key: 'addressee',      label: '宛名',          group: 'お客様' },
+  { key: 'zip',            label: '〒',            group: 'お客様' },
+  { key: 'prefecture',     label: '都道府県',      group: 'お客様' },
+  { key: 'city',           label: '市区町村',      group: 'お客様' },
+  { key: 'address_detail', label: '住所詳細',      group: 'お客様' },
+  { key: 'phone',          label: '電話番号',      group: 'お客様' },
+  { key: 'email',          label: 'メール',        group: 'お客様' },
+  { key: 'product_title',  label: '商品タイトル',  group: '商品' },
+  { key: 'variation',      label: 'バリエーション',group: '商品' },
+  { key: 'image_url',      label: '画像URL',       group: '商品' },
+  { key: 'amazon_link',    label: 'Amazon URL',    group: 'リンク' },
+  { key: 'base_link',      label: 'BASE URL',      group: 'リンク' },
+  { key: 'product_page',   label: '商品ページURL', group: 'リンク' },
+  { key: 'link_child',     label: 'リンク(子ASIN)',group: 'リンク' },
+  { key: 'amazon_page',    label: 'Amazon注文ページ',group: '仕入れ' },
+  { key: 'purchase_order', label: '仕入注文番号',  group: '仕入れ' },
+  { key: 'asin_child',     label: 'ASIN(子)',      group: '仕入れ' },
+  { key: 'arrival_date1',  label: '到着予定日',    group: '仕入れ' },
+  { key: 'arrival_date',   label: '到着日',        group: '仕入れ' },
+  { key: 'purchase_price', label: '仕入金額',      group: '仕入れ' },
+  { key: 'unit_price',     label: '単価',          group: '金額' },
+  { key: 'quantity',       label: '数量',          group: '金額' },
+  { key: 'total_amount',   label: '合計金額',      group: '金額' },
+  { key: 'commission',     label: '手数料',        group: '金額' },
+  { key: 'profit',         label: '利益',          group: '金額' },
+  { key: 'profit_rate',    label: '利益率',        group: '金額' },
+  { key: 'tracking',       label: '追跡番号',      group: '配送' },
+  { key: 'mail_delivery',  label: '出荷通知',      group: '配送' },
+  { key: 'mail_review',    label: '評価依頼',      group: '配送' },
+];
+
 const state = {
   view: 'auth', orders: [], filtered: [],
   selectedOrder: null, filter: 'all', searchQuery: '',
@@ -27,6 +66,18 @@ function loadStorage() { try { return JSON.parse(localStorage.getItem(STORAGE_KE
 function saveStorage(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify({...loadStorage(),...d})); }
 function loadCache()    { try { return JSON.parse(sessionStorage.getItem('base_orders')||'null'); } catch { return null; } }
 function saveCache(o)   { try { sessionStorage.setItem('base_orders', JSON.stringify(o)); } catch {} }
+function loadColOverrides() { try { return JSON.parse(localStorage.getItem('base_col_overrides')||'{}'); } catch { return {}; } }
+function saveColOverrides(d) { localStorage.setItem('base_col_overrides', JSON.stringify(d)); }
+
+// 列文字 → 0始まりインデックス（A=0, B=1, ... Z=25, AA=26, ...）
+function colLetterToIdx(s) {
+  if (!s) return -1;
+  s = String(s).trim().toUpperCase();
+  if (!s || !/^[A-Z]+$/.test(s)) return -1;
+  let n = 0;
+  for (let i = 0; i < s.length; i++) n = n * 26 + s.charCodeAt(i) - 64;
+  return n - 1;
+}
 
 // ── 動的列検出 ─────────────────────────────────────────────
 function detectColumns(h1, h2) {
@@ -235,17 +286,24 @@ async function loadOrders(forceRefresh = false) {
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
     const all = resp.result.values || [];
-    if (all.length < 3) { state.orders = []; state.isLoading = false; applyFilter(); renderOrdersList(); return; }
+    const headerRows = Math.max(1, Math.min(5, parseInt(loadStorage().headerRows || '2', 10)));
+    if (all.length <= headerRows) { state.orders = []; state.isLoading = false; applyFilter(); renderOrdersList(); return; }
 
     const h1 = (all[0] || []).map(v => String(v||'').trim());
     const h2 = (all[1] || []).map(v => String(v||'').trim());
     state.colMap = detectColumns(h1, h2);
 
-    // データは3行目（index 2）から
-    // 行フィルター: 生データで空行を除外（列検出失敗でも落とさない）
-    state.orders = all.slice(2)
+    // 手動オーバーライドを適用
+    const overrides = loadColOverrides();
+    Object.entries(overrides).forEach(([k, v]) => {
+      const idx = colLetterToIdx(v);
+      if (idx >= 0) state.colMap[k] = idx;
+    });
+
+    // データはヘッダー行の次の行から
+    state.orders = all.slice(headerRows)
       .filter(row => row && row.some(v => String(v ?? '').trim() !== ''))
-      .map((row, i) => parseRow(row, i + 3));
+      .map((row, i) => parseRow(row, i + headerRows + 1));
 
     state.lastSynced = new Date();
     saveCache(state.orders);
@@ -609,6 +667,60 @@ function renderDetail(o) {
   });
 }
 
+// ── Render: Column Mapping Card ───────────────────────────
+function renderColMappingCard() {
+  const overrides = loadColOverrides();
+  const groups = [...new Set(FIELD_CONFIG.map(f => f.group))];
+
+  const rows = groups.map(g => {
+    const fields = FIELD_CONFIG.filter(f => f.group === g);
+    const fieldRows = fields.map(f => {
+      const autoIdx = state.colMap[f.key] ?? -1;
+      const autoLetter = autoIdx >= 0 ? colLetter(autoIdx) : '?';
+      const override = overrides[f.key] || '';
+      return `<div style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid var(--border);gap:8px">
+        <span style="font-size:12px;color:var(--text);flex:1">${f.label}</span>
+        <span style="font-size:11px;color:${autoIdx>=0?'var(--c-sourced)':'var(--c-cancelled)'};min-width:28px;text-align:center;font-weight:700">${autoLetter}</span>
+        <input class="col-map-input" data-field="${f.key}"
+          style="width:52px;height:30px;border:1.5px solid var(--border);border-radius:6px;text-align:center;font-size:13px;font-weight:700;text-transform:uppercase;outline:none;background:var(--surface)"
+          placeholder="例:C" value="${escHtml(override)}" maxlength="3">
+      </div>`;
+    }).join('');
+    return `<div style="margin-top:4px">
+      <div style="font-size:10px;font-weight:700;color:var(--text-hint);text-transform:uppercase;letter-spacing:0.5px;padding:6px 14px 2px;background:var(--surface-2)">${g}</div>
+      ${fieldRows}
+    </div>`;
+  }).join('');
+
+  return `<div class="card" style="margin:6px 10px">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>列マッピング（手動設定）</span>
+      <span style="font-size:10px;font-weight:400;color:var(--text-hint)">青=自動検出列 / 入力欄=手動指定</span>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:var(--text-2);line-height:1.6">
+      スプレッドシートの列文字（A・B・C…）を入力してください。<br>
+      入力した列が自動検出より優先されます。
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;padding:2px 14px 8px">
+      <span style="font-size:11px;color:var(--text-2)">ヘッダー行数：</span>
+      <input id="input-header-rows" style="width:44px;height:28px;border:1.5px solid var(--border);border-radius:6px;text-align:center;font-size:13px;outline:none" type="number" min="1" max="5" value="${loadStorage().headerRows||2}">
+      <span style="font-size:11px;color:var(--text-hint)">（データは何行目から？ヘッダー行数+1行目）</span>
+    </div>
+    <div style="border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;padding:4px 14px 4px;background:var(--surface-2);font-size:10px;color:var(--text-hint);gap:8px">
+        <span style="flex:1">フィールド</span>
+        <span style="min-width:28px;text-align:center">自動</span>
+        <span style="width:52px;text-align:center">手動入力</span>
+      </div>
+      ${rows}
+    </div>
+    <div style="padding:10px 14px;display:flex;gap:8px">
+      <button id="btn-save-colmap" class="btn btn-primary" style="flex:1">保存して再読み込み</button>
+      <button id="btn-clear-colmap" class="btn btn-secondary">リセット</button>
+    </div>
+  </div>`;
+}
+
 // ── Render: Settings ──────────────────────────────────────
 function renderSettings() {
   const sync = state.lastSynced ? state.lastSynced.toLocaleTimeString('ja-JP') : '未同期';
@@ -646,12 +758,7 @@ function renderSettings() {
         <div class="detail-row"><span class="detail-label">スプレッドシートID</span>
           <span class="detail-value" style="font-size:11px;word-break:break-all">${SPREADSHEET_ID}</span></div>
       </div>
-      <div class="card" style="margin:6px 10px">
-        <div class="card-title">列検出状況（デバッグ）</div>
-        <div style="padding:10px 14px;font-size:11px;color:#555;line-height:1.8;word-break:break-all">
-          ${Object.entries(state.colMap).filter(([,v])=>v>=0).map(([k,v])=>`<b>${k}</b>:${v}`).join('　') || '未検出（再読み込みしてください）'}
-        </div>
-      </div>
+      ${renderColMappingCard()}
     </div>`;
   document.getElementById('btn-signout')?.addEventListener('click', signOut);
   document.getElementById('btn-refresh-data')?.addEventListener('click', () => {
@@ -664,6 +771,34 @@ function renderSettings() {
     state.clientId = cid; saveStorage({ clientId: cid, accessToken: null });
     gapi.client.setToken(null); initTokenClient(cid);
     state.tokenClient?.requestAccessToken({ prompt: 'consent' });
+  });
+
+  // 列マッピング保存
+  document.getElementById('btn-save-colmap')?.addEventListener('click', () => {
+    const overrides = {};
+    document.querySelectorAll('.col-map-input').forEach(input => {
+      const v = input.value.trim().toUpperCase();
+      if (v) overrides[input.dataset.field] = v;
+    });
+    saveColOverrides(overrides);
+    const hr = parseInt(document.getElementById('input-header-rows')?.value || '2', 10);
+    if (hr >= 1 && hr <= 5) saveStorage({ headerRows: hr });
+    sessionStorage.removeItem('base_orders'); state.colMap = {};
+    showToast('保存しました。再読み込み中...');
+    loadOrders(true); navigate('orders');
+  });
+
+  document.getElementById('btn-clear-colmap')?.addEventListener('click', () => {
+    saveColOverrides({});
+    document.querySelectorAll('.col-map-input').forEach(input => { input.value = ''; });
+    showToast('マッピングをリセットしました');
+  });
+
+  // col-map-input の文字を自動で大文字に
+  document.querySelectorAll('.col-map-input').forEach(input => {
+    input.addEventListener('input', () => { input.value = input.value.toUpperCase(); });
+    input.addEventListener('focus', () => { input.style.borderColor = 'var(--primary)'; });
+    input.addEventListener('blur',  () => { input.style.borderColor = 'var(--border)'; });
   });
 }
 
