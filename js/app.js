@@ -286,11 +286,14 @@ async function loadOrders(forceRefresh = false) {
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
     const all = resp.result.values || [];
-    const headerRows = Math.max(1, Math.min(5, parseInt(loadStorage().headerRows || '2', 10)));
+    // headerRows = データ開始前の行数（空白行+ヘッダー行の合計）
+    // 例: 行1-2空白, 行3ヘッダー1, 行4ヘッダー2, 行5〜データ → headerRows=4
+    const headerRows = Math.max(1, Math.min(10, parseInt(loadStorage().headerRows || '4', 10)));
     if (all.length <= headerRows) { state.orders = []; state.isLoading = false; applyFilter(); renderOrdersList(); return; }
 
-    const h1 = (all[0] || []).map(v => String(v||'').trim());
-    const h2 = (all[1] || []).map(v => String(v||'').trim());
+    // h1=最後から2番目の行（ヘッダー1）, h2=最後のヘッダー行（ヘッダー2）
+    const h1 = (all[headerRows - 2] || []).map(v => String(v||'').trim());
+    const h2 = (all[headerRows - 1] || []).map(v => String(v||'').trim());
     state.colMap = detectColumns(h1, h2);
 
     // 手動オーバーライドを適用
@@ -702,9 +705,9 @@ function renderColMappingCard() {
       入力した列が自動検出より優先されます。
     </div>
     <div style="display:flex;align-items:center;gap:6px;padding:2px 14px 8px">
-      <span style="font-size:11px;color:var(--text-2)">ヘッダー行数：</span>
-      <input id="input-header-rows" style="width:44px;height:28px;border:1.5px solid var(--border);border-radius:6px;text-align:center;font-size:13px;outline:none" type="number" min="1" max="5" value="${loadStorage().headerRows||2}">
-      <span style="font-size:11px;color:var(--text-hint)">（データは何行目から？ヘッダー行数+1行目）</span>
+      <span style="font-size:11px;color:var(--text-2)">データ開始前の行数：</span>
+      <input id="input-header-rows" style="width:44px;height:28px;border:1.5px solid var(--border);border-radius:6px;text-align:center;font-size:13px;outline:none" type="number" min="1" max="10" value="${loadStorage().headerRows||4}">
+      <span style="font-size:11px;color:var(--text-hint)">（空白行+ヘッダー行の合計。例: 空白2行+ヘッダー2行=4）</span>
     </div>
     <div style="border-top:1px solid var(--border)">
       <div style="display:flex;align-items:center;padding:4px 14px 4px;background:var(--surface-2);font-size:10px;color:var(--text-hint);gap:8px">
