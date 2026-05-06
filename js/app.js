@@ -78,8 +78,8 @@ function saveStorage(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify({...l
 function loadCache()    { try { return JSON.parse(sessionStorage.getItem('base_orders')||'null'); } catch { return null; } }
 function saveCache(o)   { try { sessionStorage.setItem('base_orders', JSON.stringify(o)); } catch {} }
 function loadColOverrides() {
-  // AL=到着予定日, AZ=仕入金額 をデフォルトとして設定
-  const defaults = { arrival_date1: 'AL', purchase_price: 'AZ' };
+  // AJ=仕入注文番号, AL=到着予定日, AZ=仕入金額 をデフォルトとして設定
+  const defaults = { purchase_order: 'AJ', arrival_date1: 'AL', purchase_price: 'AZ' };
   try {
     const saved = JSON.parse(localStorage.getItem('base_col_overrides') || '{}');
     return { ...defaults, ...saved };
@@ -207,6 +207,17 @@ function fmtAmount(v) {
   if (!v) return '';
   const n = parseFloat(String(v).replace(/[,¥，,]/g, ''));
   return isNaN(n) ? String(v) : '¥' + n.toLocaleString('ja-JP');
+}
+
+function fmtRate(v) {
+  if (!v) return '';
+  const s = String(v);
+  if (s.includes('%')) return s;
+  const n = parseFloat(s);
+  if (isNaN(n)) return s;
+  // 小数（0〜1の範囲）なら100倍して%表示
+  const pct = Math.abs(n) < 2 ? n * 100 : n;
+  return pct.toFixed(1).replace(/\.0$/, '') + '%';
 }
 
 function escHtml(s) {
@@ -408,7 +419,7 @@ function colLetter(idx) {
   return s;
 }
 
-async function updateOrder(order, newStatus, tracking, arrivalDate, purchasePrice) {
+async function updateOrder(order, newStatus, purchaseOrder, tracking, arrivalDate, purchasePrice) {
   state.isLoading = true; showToast('更新中...', 60000);
   try {
     const data = [];
@@ -418,6 +429,7 @@ async function updateOrder(order, newStatus, tracking, arrivalDate, purchasePric
       if (c >= 0) data.push({ range: `${state.sheetName}!${colLetter(c)}${r}`, values: [[value]] });
     };
     push('status', newStatus);
+    if (purchaseOrder !== undefined) push('purchase_order', purchaseOrder);
     push('tracking', tracking);
     if (arrivalDate  !== undefined) push('arrival_date1', arrivalDate);
     if (purchasePrice !== undefined) {
@@ -429,8 +441,9 @@ async function updateOrder(order, newStatus, tracking, arrivalDate, purchasePric
       resource: { valueInputOption: 'RAW', data },
     });
     order.status_raw = newStatus; order.tracking = tracking;
-    if (arrivalDate  !== undefined) order.arrival_date1  = arrivalDate;
-    if (purchasePrice !== undefined) order.purchase_price = purchasePrice;
+    if (purchaseOrder !== undefined) order.purchase_order  = purchaseOrder;
+    if (arrivalDate   !== undefined) order.arrival_date1   = arrivalDate;
+    if (purchasePrice !== undefined) order.purchase_price  = purchasePrice;
     saveCache(state.orders); applyFilter();
     showToast('更新しました ✓'); renderDetail(order);
   } catch(e) { console.error(e); showToast('更新に失敗しました'); }
@@ -562,7 +575,7 @@ function renderOrdersList() {
       <div class="card-row-4">
         <span class="card-amount">${escHtml(fmtAmount(o.total_amount))}</span>
         ${o.profit ? `<span class="card-profit ${parseFloat(o.profit)>=0?'profit-pos':'profit-neg'}">
-          利益 ${escHtml(fmtAmount(o.profit))} (${escHtml(o.profit_rate)})</span>` : ''}
+          利益 ${escHtml(fmtAmount(o.profit))} (${escHtml(fmtRate(o.profit_rate))})</span>` : ''}
       </div>
     </div>`).join('');
 
@@ -661,7 +674,7 @@ function renderDetail(o) {
       ['合計',   `<strong>${escHtml(fmtAmount(o.total_amount))}</strong>`],
       ['手数料', escHtml(fmtAmount(o.commission))],
       ['仕入',   escHtml(fmtAmount(o.purchase_price))],
-      o.profit ? ['利益', `<strong style="color:${profitColor}">${escHtml(fmtAmount(o.profit))} (${escHtml(o.profit_rate)})</strong>`] : null,
+      o.profit ? ['利益', `<strong style="color:${profitColor}">${escHtml(fmtAmount(o.profit))} (${escHtml(fmtRate(o.profit_rate))})</strong>`] : null,
     ])}
 
     ${section('配送', [
@@ -680,6 +693,11 @@ function renderDetail(o) {
               `<option value="${s}" ${o.status_raw===s?'selected':''}>${s}</option>`
             ).join('')}
           </select>
+        </div>
+        <div>
+          <label class="input-label">仕入注文番号（AJ列）</label>
+          <input id="input-purchase-order" class="text-input" type="text"
+            placeholder="Amazonの注文番号" value="${escHtml(o.purchase_order)}">
         </div>
         <div>
           <label class="input-label">到着予定日（AL列）</label>
@@ -704,6 +722,7 @@ function renderDetail(o) {
   document.getElementById('btn-update')?.addEventListener('click', () => {
     updateOrder(o,
       document.getElementById('select-status')?.value,
+      document.getElementById('input-purchase-order')?.value.trim(),
       document.getElementById('input-tracking')?.value.trim(),
       document.getElementById('input-arrival')?.value.trim(),
       document.getElementById('input-purchase')?.value.trim()

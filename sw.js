@@ -1,4 +1,4 @@
-const CACHE_NAME = 'base-order-v8';
+const CACHE_NAME = 'base-order-v9';
 const STATIC_ASSETS = [
   './',
   './index.html',
