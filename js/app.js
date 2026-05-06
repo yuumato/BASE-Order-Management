@@ -30,10 +30,16 @@ function saveCache(o)   { try { sessionStorage.setItem('base_orders', JSON.strin
 
 // ── 動的列検出 ─────────────────────────────────────────────
 function detectColumns(h1, h2) {
-  // h1=1行目ヘッダー, h2=2行目サブヘッダー (どちらも trim済み文字列配列)
-  const exact = (row, names) => {
+  // 完全一致 → 部分一致の順でフォールバック
+  const find = (row, names) => {
+    // 完全一致を優先
     for (const n of names) {
       const i = row.findIndex(v => v === n);
+      if (i >= 0) return i;
+    }
+    // 部分一致（前後の空白・改行を除去して含むか）
+    for (const n of names) {
+      const i = row.findIndex(v => v.includes(n) || n.includes(v));
       if (i >= 0) return i;
     }
     return -1;
@@ -41,50 +47,50 @@ function detectColumns(h1, h2) {
   const nth = (row, name, n) => {
     let c = 0;
     for (let i = 0; i < row.length; i++) {
-      if (row[i] === name) { if (c === n) return i; c++; }
+      if (row[i] === name || row[i].includes(name)) { if (c === n) return i; c++; }
     }
     return -1;
   };
 
   const c = {};
   // 1行目から検出
-  c.order_date     = exact(h1, ['注文日']);
-  c.seq_no         = exact(h1, ['No.', 'No']);
-  c.status         = exact(h1, ['ステータス']);
-  c.base_order_id  = exact(h1, ['BASE注文番号']);
-  c.shop_id        = exact(h1, ['ショップID']);
-  c.shop_name      = exact(h1, ['ショップ名']);
-  c.image_url      = exact(h1, ['画像リンク']);
-  c.product_page   = exact(h1, ['商品ページ']);
-  c.product_title  = exact(h1, ['タイトル']);        // 最初のタイトル列
-  c.variation      = exact(h1, ['バリエーション内容']); // 最初のバリエーション列
-  c.purchase_order = exact(h1, ['仕入注文番号']);
-  c.amazon_page    = exact(h1, ['Ama注文ページ']);
-  c.arrival_date1  = exact(h1, ['到着予定日']);
-  c.arrival_date   = exact(h1, ['到着日']);
-  c.unit_price     = exact(h1, ['単価']);
-  c.total_amount   = exact(h1, ['合計(小計+オプション)','合計']);
-  c.commission     = exact(h1, ['手数料']);
-  c.quantity       = exact(h1, ['数量']);
-  c.purchase_price = exact(h1, ['仕入金額']);
-  c.base_link      = exact(h1, ['BASE']);
-  c.amazon_link    = exact(h1, ['AmazonJP']);
-  c.tracking       = exact(h1, ['追跡番号']);
-  c.cost           = exact(h1, ['コスト']);
-  c.profit         = exact(h1, ['利益']);
-  c.profit_rate    = exact(h1, ['利益率']);
+  c.order_date     = find(h1, ['注文日']);
+  c.seq_no         = find(h1, ['No.', 'No']);
+  c.status         = find(h1, ['ステータス']);
+  c.base_order_id  = find(h1, ['BASE注文番号']);
+  c.shop_id        = find(h1, ['ショップID']);
+  c.shop_name      = find(h1, ['ショップ名']);
+  c.image_url      = find(h1, ['画像リンク']);
+  c.product_page   = find(h1, ['商品ページ']);
+  c.product_title  = find(h1, ['タイトル']);        // 最初のタイトル列
+  c.variation      = find(h1, ['バリエーション内容']); // 最初のバリエーション列
+  c.purchase_order = find(h1, ['仕入注文番号']);
+  c.amazon_page    = find(h1, ['Ama注文ページ']);
+  c.arrival_date1  = find(h1, ['到着予定日']);
+  c.arrival_date   = find(h1, ['到着日']);
+  c.unit_price     = find(h1, ['単価']);
+  c.total_amount   = find(h1, ['合計(小計+オプション)','合計']);
+  c.commission     = find(h1, ['手数料']);
+  c.quantity       = find(h1, ['数量']);
+  c.purchase_price = find(h1, ['仕入金額']);
+  c.base_link      = find(h1, ['BASE']);
+  c.amazon_link    = find(h1, ['AmazonJP']);
+  c.tracking       = find(h1, ['追跡番号']);
+  c.cost           = find(h1, ['コスト']);
+  c.profit         = find(h1, ['利益']);
+  c.profit_rate    = find(h1, ['利益率']);
 
   // 2行目から検出
-  c.mail_orei      = exact(h2, ['御礼']);
-  c.mail_shiire    = exact(h2, ['仕入れ']);
-  c.mail_delivery  = exact(h2, ['出荷通知']);
-  c.mail_review    = exact(h2, ['評価依頼']);
-  c.recipient_name = exact(h2, ['送付先名']);
+  c.mail_orei      = find(h2, ['御礼']);
+  c.mail_shiire    = find(h2, ['仕入れ']);
+  c.mail_delivery  = find(h2, ['出荷通知']);
+  c.mail_review    = find(h2, ['評価依頼']);
+  c.recipient_name = find(h2, ['送付先名']);
   c.zip            = nth(h2, '〒', 0);          // 1つ目の〒（結合形式）
-  c.address_street = exact(h2, ['住所2']);
+  c.address_street = find(h2, ['住所2']);
   c.phone          = nth(h2, '電話番号', 0);    // 1つ目の電話番号
-  c.addressee      = exact(h2, ['宛名']);
-  c.email          = exact(h2, ['メールアドレス']);
+  c.addressee      = find(h2, ['宛名']);
+  c.email          = find(h2, ['メールアドレス']);
 
   // 2つ目の〒の位置から都道府県・市区町村・住所詳細を算出
   const zip2 = nth(h2, '〒', 1);
@@ -236,9 +242,10 @@ async function loadOrders(forceRefresh = false) {
     state.colMap = detectColumns(h1, h2);
 
     // データは3行目（index 2）から
+    // 行フィルター: 生データで空行を除外（列検出失敗でも落とさない）
     state.orders = all.slice(2)
-      .map((row, i) => parseRow(row, i + 3))
-      .filter(o => o.base_order_id || o.seq_no);
+      .filter(row => row && row.some(v => String(v ?? '').trim() !== ''))
+      .map((row, i) => parseRow(row, i + 3));
 
     state.lastSynced = new Date();
     saveCache(state.orders);
@@ -638,6 +645,12 @@ function renderSettings() {
         </div>
         <div class="detail-row"><span class="detail-label">スプレッドシートID</span>
           <span class="detail-value" style="font-size:11px;word-break:break-all">${SPREADSHEET_ID}</span></div>
+      </div>
+      <div class="card" style="margin:6px 10px">
+        <div class="card-title">列検出状況（デバッグ）</div>
+        <div style="padding:10px 14px;font-size:11px;color:#555;line-height:1.8;word-break:break-all">
+          ${Object.entries(state.colMap).filter(([,v])=>v>=0).map(([k,v])=>`<b>${k}</b>:${v}`).join('　') || '未検出（再読み込みしてください）'}
+        </div>
       </div>
     </div>`;
   document.getElementById('btn-signout')?.addEventListener('click', signOut);
